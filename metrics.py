@@ -1,6 +1,7 @@
 import requests
 import sys
 import signal
+import re
 from os import getenv
 from time import sleep
 from prometheus_client.core import GaugeMetricFamily, REGISTRY, CounterMetricFamily
@@ -14,23 +15,28 @@ class TasmotaCollector(object):
             self.ip = "192.168.4.1"
         self.user = getenv('USER')
         self.password = getenv('PASSWORD')
+        self.device_name = getenv('DEVICE_NAME')
 
     def collect(self):
 
         response = self.fetch()
 
         for key in response:
-            metric_name = "tasmota_" + key.lower().replace(" ", "_") 
+            safe_key = re.sub(r'[^A-Za-z0-9_]+', '', key).lower().replace(" ", "_") 
+            
+            metric_name = "tasmota_" + safe_key
             metric = response[key].split()[0]
+
             unit = None
             if len(response[key].split()) > 1:
-                unit = response[key].split()[1]
+                unit = re.sub(r'[^A-Za-z0-9_]+', '', response[key].split()[1])
 
             if "today" in metric_name or "yesterday" in metric_name or "total" in metric_name:
-                r = CounterMetricFamily(metric_name, key, labels=['device'], unit=unit)
+                r = CounterMetricFamily(metric_name, safe_key, labels=['device', 'device_name'], unit=unit)
             else:
-                r = GaugeMetricFamily(metric_name, key, labels=['device'], unit=unit)
-            r.add_metric([self.ip], metric)
+                r = GaugeMetricFamily(metric_name, safe_key, labels=['device', 'device_name'], unit=unit)
+            
+            r.add_metric([self.ip, self.device_name], metric)
             yield r
 
     def fetch(self):
@@ -76,5 +82,5 @@ if __name__ == '__main__':
     REGISTRY.register(TasmotaCollector())
 
     while(True):
-        sleep(1)
+        sleep(5)
     
