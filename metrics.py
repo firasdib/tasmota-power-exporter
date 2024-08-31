@@ -2,58 +2,52 @@ import requests
 import sys
 import signal
 import re
+import json
 from os import getenv
 from time import sleep
 from prometheus_client.core import GaugeMetricFamily, REGISTRY, CounterMetricFamily
 from prometheus_client import start_http_server
 
-
 class TasmotaCollector(object):
     def __init__(self):
-        self.ip = getenv('DEVICE_IP')
-        if not self.ip:
-            self.ip = "192.168.4.1"
-        self.user = getenv('USER')
-        self.password = getenv('PASSWORD')
-        self.device_name = getenv('DEVICE_NAME')
+        # Read device config
+        with open('/devices.json', 'r') as f:
+            self.devices = json.load(f)
 
     def collect(self):
+        for device in self.devices:
+            response = self.fetch(device['ip'], device['user'], device['password'])
 
-        response = self.fetch()
+            for key in response:
+                safe_key = re.sub(r'[^A-Za-z0-9_]+', '', key).lower().replace(" ", "_") 
+                
+                metric_name = "tasmota_" + safe_key
+                metric = response[key].split()[0]
 
-        for key in response:
-            safe_key = re.sub(r'[^A-Za-z0-9_]+', '', key).lower().replace(" ", "_") 
-            
-            metric_name = "tasmota_" + safe_key
-            metric = response[key].split()[0]
+                unit = None
+                if len(response[key].split()) > 1:
+                    unit = re.sub(r'[^A-Za-z0-9_]+', '', response[key].split()[1])
 
-            unit = None
-            if len(response[key].split()) > 1:
-                unit = re.sub(r'[^A-Za-z0-9_]+', '', response[key].split()[1])
+                if "today" in metric_name or "yesterday" in metric_name or "total" in metric_name:
+                    r = CounterMetricFamily(metric_name, safe_key, labels=['device', 'device_name'], unit=unit)
+                else:
+                    r = GaugeMetricFamily(metric_name, safe_key, labels=['device', 'device_name'], unit=unit)
+                
+                r.add_metric([device['ip'], device['device_name']], metric)
+                yield r
 
-            if "today" in metric_name or "yesterday" in metric_name or "total" in metric_name:
-                r = CounterMetricFamily(metric_name, safe_key, labels=['device', 'device_name'], unit=unit)
-            else:
-                r = GaugeMetricFamily(metric_name, safe_key, labels=['device', 'device_name'], unit=unit)
-            
-            r.add_metric([self.ip, self.device_name], metric)
-            yield r
-
-    def fetch(self):
-
-        url = 'http://' + self.ip + '/?m=1'
+    def fetch(self, ip, user, password):
+        url = 'http://' + ip + '/?m=1'
 
         session = requests.Session()
         
-        if self.user and self.password:
-            session.auth = (self.user, self.password)
+        if user and password:
+            session.auth = (user, password)
 
         page = session.get(url)
-
         values = {}
-
-
         string_values = str(page.text).split("{s}")
+
         for i in range(1,len(string_values)):
             try:
                 label = string_values[i].split("{m}")[0]
@@ -65,6 +59,7 @@ class TasmotaCollector(object):
                 values[label] = value
             except IndexError:
                 continue
+
         return values
 
 def signal_handler(signal, frame):
@@ -73,7 +68,6 @@ def signal_handler(signal, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 if __name__ == '__main__':
-
     port = getenv('EXPORTER_PORT')
     if not port:
         port = 8000
@@ -82,5 +76,4 @@ if __name__ == '__main__':
     REGISTRY.register(TasmotaCollector())
 
     while(True):
-        sleep(5)
-    
+        sleep(1)
