@@ -36,8 +36,8 @@ class TasmotaCollector(object):
                     
                     r.add_metric([device['ip'], device['device_name']], metric)
                     yield r
-                except:
-                    continue
+            except:
+                continue
 
     def fetch(self, ip, user, password):
         url = 'http://' + ip + '/?m=1'
