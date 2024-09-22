@@ -16,25 +16,28 @@ class TasmotaCollector(object):
 
     def collect(self):
         for device in self.devices:
-            response = self.fetch(device['ip'], device['user'], device['password'])
-
-            for key in response:
-                safe_key = re.sub(r'[^A-Za-z0-9_]+', '', key).lower().replace(" ", "_") 
-                
-                metric_name = "tasmota_" + safe_key
-                metric = response[key].split()[0]
-
-                unit = None
-                if len(response[key].split()) > 1:
-                    unit = re.sub(r'[^A-Za-z0-9_]+', '', response[key].split()[1])
-
-                if "today" in metric_name or "yesterday" in metric_name or "total" in metric_name:
-                    r = CounterMetricFamily(metric_name, safe_key, labels=['device', 'device_name'], unit=unit)
-                else:
-                    r = GaugeMetricFamily(metric_name, safe_key, labels=['device', 'device_name'], unit=unit)
-                
-                r.add_metric([device['ip'], device['device_name']], metric)
-                yield r
+            try:
+                response = self.fetch(device['ip'], device['user'], device['password'])
+    
+                for key in response:
+                    safe_key = re.sub(r'[^A-Za-z0-9_]+', '', key).lower().replace(" ", "_") 
+                    
+                    metric_name = "tasmota_" + safe_key
+                    metric = response[key].split()[0]
+    
+                    unit = None
+                    if len(response[key].split()) > 1:
+                        unit = re.sub(r'[^A-Za-z0-9_]+', '', response[key].split()[1])
+    
+                    if "today" in metric_name or "yesterday" in metric_name or "total" in metric_name:
+                        r = CounterMetricFamily(metric_name, safe_key, labels=['device', 'device_name'], unit=unit)
+                    else:
+                        r = GaugeMetricFamily(metric_name, safe_key, labels=['device', 'device_name'], unit=unit)
+                    
+                    r.add_metric([device['ip'], device['device_name']], metric)
+                    yield r
+                except:
+                    continue
 
     def fetch(self, ip, user, password):
         url = 'http://' + ip + '/?m=1'
