@@ -47,7 +47,7 @@ class TasmotaCollector(object):
         if user and password:
             session.auth = (user, password)
 
-        page = session.get(url)
+        page = session.get(url, timeout=1)
         values = {}
         string_values = str(page.text).split("{s}")
 
